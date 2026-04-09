@@ -4,7 +4,7 @@
  */
 
 import { randomUUID } from 'crypto';
-import { Product, Invoice, User, StorefrontConfig } from '@/types';
+import { Product, Invoice, User, StorefrontConfig, Order } from '@/types';
 
 // ---------------------------------------------------------------------------
 // In-memory stores (server-side singletons for demo)
@@ -14,6 +14,7 @@ const users = new Map<string, User & { password: string }>();
 const products = new Map<string, Product[]>(); // shopId -> products
 const invoices = new Map<string, Invoice[]>(); // shopId -> invoices
 const storefronts = new Map<string, StorefrontConfig>(); // shopId -> config
+const orders = new Map<string, Order[]>(); // shopId -> orders
 
 // ---------------------------------------------------------------------------
 // User helpers
@@ -129,6 +130,41 @@ export function getStorefront(shopId: string): StorefrontConfig | null {
 export function saveStorefront(shopId: string, config: StorefrontConfig): StorefrontConfig {
   storefronts.set(shopId, config);
   return config;
+}
+
+// ---------------------------------------------------------------------------
+// Order helpers (customer bookings)
+// ---------------------------------------------------------------------------
+
+export function getOrders(shopId: string): Order[] {
+  return orders.get(shopId) || [];
+}
+
+export function createOrder(shopId: string, data: Omit<Order, 'id' | 'createdAt' | 'updatedAt'>): Order {
+  const id = `ord_${randomUUID()}`;
+  const now = new Date().toISOString();
+  const order: Order = { ...data, id, createdAt: now, updatedAt: now };
+  const list = orders.get(shopId) || [];
+  list.unshift(order);
+  orders.set(shopId, list);
+  return order;
+}
+
+export function updateOrder(
+  shopId: string,
+  orderId: string,
+  data: Partial<Pick<Order, 'status' | 'fulfillmentType' | 'notes'>>
+): Order | null {
+  const list = orders.get(shopId) || [];
+  const idx = list.findIndex((o) => o.id === orderId);
+  if (idx === -1) return null;
+  list[idx] = { ...list[idx], ...data, updatedAt: new Date().toISOString() };
+  orders.set(shopId, list);
+  return list[idx];
+}
+
+export function getOrderById(shopId: string, orderId: string): Order | null {
+  return (orders.get(shopId) || []).find((o) => o.id === orderId) || null;
 }
 
 // ---------------------------------------------------------------------------

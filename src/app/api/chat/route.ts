@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { verifyToken } from '@/lib/auth';
 import { sarvamChat, classifyChangeType } from '@/lib/sarvam';
-import { getProducts, getAnalytics } from '@/lib/db';
+import { getProducts, getAnalytics, getOrders } from '@/lib/db';
 import { getUserById } from '@/lib/db';
 
 async function getAuthUser(request: NextRequest) {
@@ -25,16 +25,18 @@ export async function POST(request: NextRequest) {
   const shopUser = getUserById(user.userId);
   const products = getProducts(user.shopId);
   const analytics = getAnalytics(user.shopId);
+  const pendingOrders = getOrders(user.shopId).filter((o) => o.status === 'new' || o.status === 'confirmed');
 
   // Build system prompt based on context
   let systemPrompt = `You are Fera AI, a friendly business assistant for Indian shopkeepers. 
 You speak simply and clearly in the shopkeeper's preferred language.
-You help with: managing products, creating invoices, understanding sales data, and growing their business.
+You help with: managing products, creating invoices, understanding sales data, growing their business, and managing customer orders.
 
 Shop Name: ${shopUser?.shopName || 'Your Shop'}
 Plan: ${user.plan}
 Total Products: ${products.length}
 Total Revenue: ₹${analytics.totalRevenue}
+Pending Orders: ${pendingOrders.length}
 
 Key rules:
 - Be conversational and friendly, like talking to a friend
@@ -42,7 +44,22 @@ Key rules:
 - When a shopkeeper wants to add a product, extract details and confirm
 - When asked about sales, explain in simple terms with actionable advice
 - Always respond in the same language the shopkeeper uses
-- Keep responses concise and practical`;
+- Keep responses concise and practical
+- Proactively suggest next actions (e.g. if there are pending orders, ask about fulfillment; if stock is low, suggest reorder)
+- If a new product was added, ask if they want it on their online store
+- If there are pending orders, ask how the shopkeeper wants to handle them (delivery or pickup)`;
+
+  // Proactive: if there are pending orders and it's a general query, mention them
+  if (pendingOrders.length > 0 && (context === 'general' || context === 'orders')) {
+    systemPrompt += `
+
+IMPORTANT: There are ${pendingOrders.length} pending order(s) that need attention. Mention this proactively if not already addressed.`;
+  }
+  if (analytics.lowStockProducts.length > 0) {
+    systemPrompt += `
+
+Low stock alert: ${analytics.lowStockProducts.map((p: { name: string; stock: number }) => `${p.name} (${p.stock} left)`).join(', ')}. Mention if relevant.`;
+  }
 
   // Detect if this is a website change request (for Pro Ultra)
   let modelToUse: 'sarvam-30b' | 'sarvam-105b' = 'sarvam-30b';
