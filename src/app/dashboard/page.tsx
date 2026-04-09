@@ -23,6 +23,8 @@ export default function DashboardPage() {
   const [addingProduct, setAddingProduct] = useState(false);
   const [aiDescription, setAiDescription] = useState("");
   const [addMode, setAddMode] = useState<"manual" | "ai">("ai");
+  const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
+  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
 
   // Invoice form
   const [invoiceForm, setInvoiceForm] = useState({
@@ -30,6 +32,11 @@ export default function DashboardPage() {
     customerPhone: "",
     items: [{ productId: "", productName: "", quantity: 1, price: 0 }],
   });
+
+  const showToast = (message: string, type: "success" | "error" = "success") => {
+    setToast({ message, type });
+    setTimeout(() => setToast(null), 4000);
+  };
 
   useEffect(() => {
     loadData();
@@ -97,10 +104,10 @@ export default function DashboardPage() {
         const data = await res.json();
         setProducts((prev) => [...prev, data.product]);
         setAiDescription("");
-        alert(`✅ Product added: ${data.product.name} at ₹${data.product.price}`);
+        showToast(`✅ Product added: ${data.product.name} at ₹${data.product.price}`);
       } else {
         const err = await res.json();
-        alert(err.error || "Failed to add product via AI");
+        showToast(err.error || "Failed to add product via AI", "error");
       }
     } finally {
       setAddingProduct(false);
@@ -108,9 +115,15 @@ export default function DashboardPage() {
   };
 
   const deleteProduct = async (id: string) => {
-    if (!confirm("Delete this product?")) return;
-    await fetch(`/api/products?id=${id}`, { method: "DELETE" });
-    setProducts((prev) => prev.filter((p) => p.id !== id));
+    setDeleteConfirmId(id);
+  };
+
+  const confirmDelete = async () => {
+    if (!deleteConfirmId) return;
+    await fetch(`/api/products?id=${deleteConfirmId}`, { method: "DELETE" });
+    setProducts((prev) => prev.filter((p) => p.id !== deleteConfirmId));
+    setDeleteConfirmId(null);
+    showToast("Product deleted");
   };
 
   const createInvoice = async () => {
@@ -154,6 +167,31 @@ export default function DashboardPage() {
 
   return (
     <div className="min-h-screen bg-gray-50 flex">
+      {/* Toast notification */}
+      {toast && (
+        <div className={`fixed top-4 right-4 z-50 px-5 py-3 rounded-xl shadow-lg text-white text-sm font-medium transition-all ${toast.type === "success" ? "bg-green-600" : "bg-red-600"}`}>
+          {toast.message}
+        </div>
+      )}
+
+      {/* Delete confirmation modal */}
+      {deleteConfirmId && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center">
+          <div className="bg-white rounded-2xl p-6 max-w-sm w-full mx-4 shadow-xl">
+            <h3 className="text-lg font-bold text-gray-900 mb-2">Delete Product?</h3>
+            <p className="text-gray-600 text-sm mb-6">This action cannot be undone.</p>
+            <div className="flex gap-3">
+              <button onClick={() => setDeleteConfirmId(null)} className="flex-1 border border-gray-300 text-gray-700 py-2.5 rounded-xl text-sm font-medium hover:bg-gray-50">
+                Cancel
+              </button>
+              <button onClick={confirmDelete} className="flex-1 bg-red-600 text-white py-2.5 rounded-xl text-sm font-medium hover:bg-red-700">
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Sidebar */}
       <aside className="w-64 bg-white border-r border-gray-200 p-4 flex flex-col fixed h-full">
         <div className="mb-8">

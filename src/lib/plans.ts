@@ -96,5 +96,5 @@ export const SUPPORTED_LANGUAGES = [
   { code: 'sd-IN', name: 'Sindhi', native: 'سنڌي' },
   { code: 'ks-IN', name: 'Kashmiri', native: 'كٲشُر' },
   { code: 'ne-IN', name: 'Nepali', native: 'नेपाली' },
-  { code: 'bo-IN', name: 'Bodo', native: 'बर\u200dः' },
+  { code: 'brx-IN', name: 'Bodo', native: 'बर\u200dः' },
 ];

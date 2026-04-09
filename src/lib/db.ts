@@ -3,6 +3,7 @@
  * In production, replace with a real database (e.g., Supabase, PlanetScale, or MongoDB).
  */
 
+import { randomUUID } from 'crypto';
 import { Product, Invoice, User, StorefrontConfig } from '@/types';
 
 // ---------------------------------------------------------------------------
@@ -21,7 +22,7 @@ const storefronts = new Map<string, StorefrontConfig>(); // shopId -> config
 export function createUser(
   data: Omit<User, 'id' | 'createdAt'> & { password: string }
 ): User {
-  const id = `u_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+  const id = `u_${randomUUID()}`;
   const user: User & { password: string } = {
     ...data,
     id,
@@ -57,7 +58,7 @@ export function getProducts(shopId: string): Product[] {
 }
 
 export function addProduct(shopId: string, data: Omit<Product, 'id' | 'createdAt' | 'updatedAt'>): Product {
-  const id = `p_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+  const id = `p_${randomUUID()}`;
   const product: Product = {
     ...data,
     id,
@@ -96,7 +97,7 @@ export function getInvoices(shopId: string): Invoice[] {
 }
 
 export function createInvoice(shopId: string, data: Omit<Invoice, 'id' | 'createdAt'>): Invoice {
-  const id = `inv_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+  const id = `inv_${randomUUID()}`;
   const invoice: Invoice = {
     ...data,
     id,
@@ -167,7 +168,7 @@ export function getAnalytics(shopId: string) {
   for (let i = 5; i >= 0; i--) {
     const d = new Date();
     d.setMonth(d.getMonth() - i);
-    const key = d.toLocaleDateString('en-IN', { month: 'short', year: '2-digit' });
+    const key = d.toLocaleDateString('en-IN', { month: 'short', year: 'numeric' });
     const monthStart = new Date(d.getFullYear(), d.getMonth(), 1).toISOString();
     const monthEnd = new Date(d.getFullYear(), d.getMonth() + 1, 0).toISOString();
     const rev = allInvoices

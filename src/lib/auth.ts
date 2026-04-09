@@ -1,8 +1,15 @@
 import { SignJWT, jwtVerify } from 'jose';
+import { scryptSync, randomBytes, timingSafeEqual } from 'crypto';
 
-const JWT_SECRET = new TextEncoder().encode(
-  process.env.JWT_SECRET || 'fera-web-default-secret-change-in-production'
-);
+function getJwtSecret(): Uint8Array {
+  const jwtSecretValue = process.env.JWT_SECRET;
+  if (!jwtSecretValue && process.env.NODE_ENV === 'production') {
+    throw new Error('JWT_SECRET environment variable is not set in production');
+  }
+  return new TextEncoder().encode(
+    jwtSecretValue || 'fera-web-dev-only-secret-change-in-production'
+  );
+}
 
 export interface JWTPayload {
   userId: string;
@@ -16,30 +23,44 @@ export async function signToken(payload: JWTPayload): Promise<string> {
     .setProtectedHeader({ alg: 'HS256' })
     .setIssuedAt()
     .setExpirationTime('7d')
-    .sign(JWT_SECRET);
+    .sign(getJwtSecret());
 }
 
 export async function verifyToken(token: string): Promise<JWTPayload | null> {
   try {
-    const { payload } = await jwtVerify(token, JWT_SECRET);
+    const { payload } = await jwtVerify(token, getJwtSecret());
     return payload as unknown as JWTPayload;
   } catch {
     return null;
   }
 }
 
+const SCRYPT_PARAMS = { N: 16384, r: 8, p: 1 };
+const KEY_LEN = 64;
+
+/**
+ * Hash a password using scrypt (a memory-hard KDF).
+ * Format: salt:hash (both hex-encoded)
+ */
 export function hashPassword(password: string): string {
-  // Simple hash for demo - use bcrypt in production
-  let hash = 0;
-  for (let i = 0; i < password.length; i++) {
-    const char = password.charCodeAt(i);
-    hash = (hash << 5) - hash + char;
-    hash = hash & hash;
-  }
-  return `$demo$${Math.abs(hash).toString(16)}$${Buffer.from(password).toString('base64')}`;
+  const salt = randomBytes(16).toString('hex');
+  const hash = scryptSync(password, salt, KEY_LEN, SCRYPT_PARAMS).toString('hex');
+  return `${salt}:${hash}`;
 }
 
-export function verifyPassword(password: string, hash: string): boolean {
-  // For demo only - in production use bcrypt.compare
-  return hashPassword(password) === hash;
+/**
+ * Verify a password against its stored hash using timing-safe comparison.
+ */
+export function verifyPassword(password: string, storedHash: string): boolean {
+  const parts = storedHash.split(':');
+  if (parts.length !== 2) return false;
+  const [salt, expectedHex] = parts;
+  try {
+    const actual = scryptSync(password, salt, KEY_LEN, SCRYPT_PARAMS);
+    const expected = Buffer.from(expectedHex, 'hex');
+    if (actual.length !== expected.length) return false;
+    return timingSafeEqual(actual, expected);
+  } catch {
+    return false;
+  }
 }
