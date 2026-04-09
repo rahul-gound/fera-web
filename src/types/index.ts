@@ -88,3 +88,30 @@ export interface StorefrontConfig {
   address: string;
   whatsapp?: string;
 }
+
+export type OrderFulfillmentType = 'delivery' | 'pickup' | 'pending';
+export type OrderStatus = 'new' | 'confirmed' | 'preparing' | 'ready' | 'delivered' | 'cancelled';
+
+export interface OrderItem {
+  productId: string;
+  productName: string;
+  quantity: number;
+  price: number;
+  total: number;
+}
+
+export interface Order {
+  id: string;
+  shopId: string;
+  customerName: string;
+  customerPhone?: string;
+  customerAddress?: string;
+  items: OrderItem[];
+  subtotal: number;
+  total: number;
+  status: OrderStatus;
+  fulfillmentType: OrderFulfillmentType;
+  notes?: string;
+  createdAt: string;
+  updatedAt: string;
+}

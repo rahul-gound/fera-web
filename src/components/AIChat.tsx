@@ -3,12 +3,13 @@ import { useState, useRef, useEffect } from "react";
 import { ChatMessage } from "@/types";
 
 interface AIChatProps {
-  context?: "general" | "products" | "analytics" | "website";
+  context?: "general" | "products" | "analytics" | "website" | "orders";
   onProductExtracted?: (product: Record<string, unknown>) => void;
   placeholder?: string;
+  language?: string;
 }
 
-export default function AIChat({ context = "general", onProductExtracted, placeholder }: AIChatProps) {
+export default function AIChat({ context = "general", onProductExtracted, placeholder, language = "hi-IN" }: AIChatProps) {
   const [messages, setMessages] = useState<ChatMessage[]>([
     {
       role: "assistant",
@@ -89,18 +90,30 @@ export default function AIChat({ context = "general", onProductExtracted, placeh
       mediaRecorder.onstop = async () => {
         const blob = new Blob(chunksRef.current, { type: "audio/webm" });
         stream.getTracks().forEach((t) => t.stop());
-        
-        // For demo: show a placeholder message since we need server-side STT
-        setInput("[Voice input recorded - AI will transcribe]");
-        // In production: upload blob to /api/transcribe and get text
-        setMessages((prev) => [
-          ...prev,
-          {
-            role: "assistant",
-            content: "🎙️ Voice input received! In production, this will be transcribed by Sarvam AI's speech-to-text. Please type your message for now.",
-            timestamp: new Date().toISOString(),
-          },
-        ]);
+        setLoading(true);
+        try {
+          const formData = new FormData();
+          formData.append("audio", blob, "audio.webm");
+          formData.append("language", language || "hi-IN");
+          const res = await fetch("/api/transcribe", { method: "POST", body: formData });
+          if (res.ok) {
+            const data = await res.json();
+            if (data.transcript) {
+              setInput(data.transcript);
+            } else {
+              setInput("");
+              setMessages((prev) => [...prev, { role: "assistant", content: "🎙️ Could not transcribe audio. Please type instead.", timestamp: new Date().toISOString() }]);
+            }
+          } else {
+            setInput("");
+            setMessages((prev) => [...prev, { role: "assistant", content: "🎙️ Transcription unavailable. Please type your message.", timestamp: new Date().toISOString() }]);
+          }
+        } catch {
+          setInput("");
+          setMessages((prev) => [...prev, { role: "assistant", content: "🎙️ Could not connect to transcription service. Please type instead.", timestamp: new Date().toISOString() }]);
+        } finally {
+          setLoading(false);
+        }
       };
 
       mediaRecorder.start();

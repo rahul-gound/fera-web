@@ -2,7 +2,9 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import AIChat from "@/components/AIChat";
-import { Product, Invoice } from "@/types";
+import ProductSearch from "@/components/ProductSearch";
+import LanguageSelector from "@/components/LanguageSelector";
+import { Product, Invoice, Order } from "@/types";
 
 interface DashboardStats {
   totalOrders: number;
@@ -17,7 +19,8 @@ export default function DashboardPage() {
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [products, setProducts] = useState<Product[]>([]);
   const [invoices, setInvoices] = useState<Invoice[]>([]);
-  const [activeTab, setActiveTab] = useState<"home" | "products" | "invoices" | "analytics" | "ai">("home");
+  const [orders, setOrders] = useState<Order[]>([]);
+  const [activeTab, setActiveTab] = useState<"home" | "products" | "invoices" | "orders" | "analytics" | "ai">("home");
   const [loading, setLoading] = useState(true);
   const [newProduct, setNewProduct] = useState({ name: "", price: "", category: "", stock: "", description: "" });
   const [addingProduct, setAddingProduct] = useState(false);
@@ -25,8 +28,9 @@ export default function DashboardPage() {
   const [addMode, setAddMode] = useState<"manual" | "ai">("ai");
   const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
+  const [language, setLanguage] = useState("hi-IN");
 
-  // Invoice form
+  // Invoice form — items now include productId for searchable selection
   const [invoiceForm, setInvoiceForm] = useState({
     customerName: "",
     customerPhone: "",
@@ -45,10 +49,11 @@ export default function DashboardPage() {
   const loadData = async () => {
     setLoading(true);
     try {
-      const [analyticsRes, productsRes, invoicesRes] = await Promise.all([
+      const [analyticsRes, productsRes, invoicesRes, ordersRes] = await Promise.all([
         fetch("/api/analytics"),
         fetch("/api/products"),
         fetch("/api/invoices"),
+        fetch("/api/orders"),
       ]);
       if (analyticsRes.ok) setStats(await analyticsRes.json());
       if (productsRes.ok) {
@@ -58,6 +63,10 @@ export default function DashboardPage() {
       if (invoicesRes.ok) {
         const data = await invoicesRes.json();
         setInvoices(data.invoices || []);
+      }
+      if (ordersRes.ok) {
+        const data = await ordersRes.json();
+        setOrders(data.orders || []);
       }
     } catch (e) {
       console.error(e);
@@ -156,6 +165,19 @@ export default function DashboardPage() {
     }
   };
 
+  const updateOrderStatus = async (id: string, status: string, fulfillmentType?: string) => {
+    const res = await fetch("/api/orders", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id, status, ...(fulfillmentType ? { fulfillmentType } : {}) }),
+    });
+    if (res.ok) {
+      const data = await res.json();
+      setOrders((prev) => prev.map((o) => (o.id === id ? data.order : o)));
+      showToast(`Order ${status}`);
+    }
+  };
+
   const logout = async () => {
     await fetch("/api/auth", {
       method: "POST",
@@ -194,12 +216,15 @@ export default function DashboardPage() {
 
       {/* Sidebar */}
       <aside className="w-64 bg-white border-r border-gray-200 p-4 flex flex-col fixed h-full">
-        <div className="mb-8">
+        <div className="mb-4">
           <Link href="/" className="flex items-center gap-1">
             <span className="text-xl font-bold text-orange-600">Fera</span>
             <span className="text-xl font-bold text-gray-800">Web</span>
           </Link>
           <p className="text-xs text-gray-500 mt-1">Shopkeeper Dashboard</p>
+        </div>
+        <div className="mb-4">
+          <LanguageSelector value={language} onChange={setLanguage} />
         </div>
         <nav className="space-y-1 flex-1">
           <button
@@ -219,6 +244,17 @@ export default function DashboardPage() {
             className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium transition-colors ${activeTab === "invoices" ? "bg-orange-100 text-orange-700" : "text-gray-600 hover:bg-gray-100"}`}
           >
             <span>🧾</span> Invoices
+          </button>
+          <button
+            onClick={() => setActiveTab("orders")}
+            className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium transition-colors ${activeTab === "orders" ? "bg-orange-100 text-orange-700" : "text-gray-600 hover:bg-gray-100"}`}
+          >
+            <span>🛒</span> Orders
+            {orders.filter((o) => o.status === "new").length > 0 && (
+              <span className="ml-auto bg-red-500 text-white text-xs px-1.5 py-0.5 rounded-full">
+                {orders.filter((o) => o.status === "new").length}
+              </span>
+            )}
           </button>
           <button
             onClick={() => setActiveTab("analytics")}
@@ -451,16 +487,22 @@ export default function DashboardPage() {
               </div>
               {invoiceForm.items.map((item, i) => (
                 <div key={i} className="grid grid-cols-4 gap-3 mb-3">
-                  <input
-                    placeholder="Product name"
-                    value={item.productName}
-                    onChange={(e) => {
-                      const items = [...invoiceForm.items];
-                      items[i] = { ...items[i], productName: e.target.value };
-                      setInvoiceForm((f) => ({ ...f, items }));
-                    }}
-                    className="col-span-2 border border-gray-300 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
-                  />
+                  <div className="col-span-2">
+                    <ProductSearch
+                      products={products}
+                      selectedProductId={item.productId || undefined}
+                      onSelect={(product) => {
+                        const items = [...invoiceForm.items];
+                        if (!product.id) {
+                          items[i] = { ...items[i], productId: "", productName: "", price: 0 };
+                        } else {
+                          items[i] = { ...items[i], productId: product.id, productName: product.name, price: product.price };
+                        }
+                        setInvoiceForm((f) => ({ ...f, items }));
+                      }}
+                      placeholder="Search & select product..."
+                    />
+                  </div>
                   <input
                     placeholder="Qty"
                     type="number"
@@ -473,17 +515,10 @@ export default function DashboardPage() {
                     }}
                     className="border border-gray-300 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
                   />
-                  <input
-                    placeholder="Price ₹"
-                    type="number"
-                    value={item.price}
-                    onChange={(e) => {
-                      const items = [...invoiceForm.items];
-                      items[i] = { ...items[i], price: parseFloat(e.target.value) || 0 };
-                      setInvoiceForm((f) => ({ ...f, items }));
-                    }}
-                    className="border border-gray-300 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
-                  />
+                  <div className="flex items-center border border-gray-200 rounded-xl px-3 py-2.5 bg-gray-50">
+                    <span className="text-xs text-gray-500 mr-1">₹</span>
+                    <span className="text-sm font-semibold text-gray-900">{item.price > 0 ? item.price : "—"}</span>
+                  </div>
                 </div>
               ))}
               <div className="flex gap-3">
@@ -553,6 +588,151 @@ export default function DashboardPage() {
                 </div>
               )}
             </div>
+          </div>
+        )}
+
+        {/* Orders Tab */}
+        {activeTab === "orders" && (
+          <div>
+            <div className="flex items-center justify-between mb-6">
+              <div>
+                <h1 className="text-2xl font-bold text-gray-900">Orders / ऑर्डर</h1>
+                <p className="text-gray-600">{orders.length} total orders</p>
+              </div>
+              <button onClick={loadData} className="border border-gray-200 text-gray-600 px-3 py-1.5 rounded-lg text-sm hover:bg-gray-50">
+                🔄 Refresh
+              </button>
+            </div>
+
+            {orders.length === 0 && !loading ? (
+              <div className="text-center py-16 text-gray-400">
+                <div className="text-5xl mb-4">🛒</div>
+                <p className="text-lg font-medium">No orders yet</p>
+                <p className="text-sm mt-1">Orders placed on your storefront will appear here.</p>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {orders.map((order) => (
+                  <div key={order.id} className="bg-white rounded-2xl border border-gray-200 p-5">
+                    <div className="flex items-start justify-between mb-3">
+                      <div>
+                        <p className="font-bold text-gray-900">{order.customerName}</p>
+                        <p className="text-sm text-gray-500">{order.customerPhone}</p>
+                        <p className="text-xs text-gray-400 font-mono mt-1">{order.id.slice(0, 16).toUpperCase()}</p>
+                        <p className="text-xs text-gray-400">{new Date(order.createdAt).toLocaleDateString("en-IN", { dateStyle: "medium" })}</p>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-xl font-bold text-gray-900">₹{order.total}</p>
+                        <span className={`text-xs px-2 py-1 rounded-full font-medium ${
+                          order.status === "new" ? "bg-blue-100 text-blue-700" :
+                          order.status === "confirmed" ? "bg-yellow-100 text-yellow-700" :
+                          order.status === "preparing" ? "bg-orange-100 text-orange-700" :
+                          order.status === "ready" ? "bg-purple-100 text-purple-700" :
+                          order.status === "delivered" ? "bg-green-100 text-green-700" :
+                          "bg-red-100 text-red-700"
+                        }`}>
+                          {order.status.toUpperCase()}
+                        </span>
+                        <div className="mt-1">
+                          <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+                            order.fulfillmentType === "delivery" ? "bg-sky-100 text-sky-700" :
+                            order.fulfillmentType === "pickup" ? "bg-emerald-100 text-emerald-700" :
+                            "bg-gray-100 text-gray-600"
+                          }`}>
+                            {order.fulfillmentType === "delivery" ? "🚚 Delivery" : order.fulfillmentType === "pickup" ? "🏪 Pickup" : "⏳ Pending"}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Items */}
+                    <div className="border-t border-gray-100 pt-2 mb-3">
+                      {order.items.map((item, i) => (
+                        <div key={i} className="flex justify-between text-xs text-gray-600 py-1">
+                          <span>{item.productName} × {item.quantity}</span>
+                          <span className="font-medium">₹{item.total}</span>
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* Actions */}
+                    <div className="flex flex-wrap gap-2">
+                      {order.fulfillmentType === "pending" && (
+                        <>
+                          <button
+                            onClick={() => updateOrderStatus(order.id, order.status, "pickup")}
+                            className="border border-emerald-500 text-emerald-700 px-3 py-1.5 rounded-lg text-xs font-medium hover:bg-emerald-50"
+                          >
+                            🏪 Set Pickup
+                          </button>
+                          <button
+                            onClick={() => updateOrderStatus(order.id, order.status, "delivery")}
+                            className="border border-sky-500 text-sky-700 px-3 py-1.5 rounded-lg text-xs font-medium hover:bg-sky-50"
+                          >
+                            🚚 Set Delivery
+                          </button>
+                        </>
+                      )}
+                      {order.status === "new" && (
+                        <button
+                          onClick={() => updateOrderStatus(order.id, "confirmed")}
+                          className="bg-yellow-500 text-white px-3 py-1.5 rounded-lg text-xs font-medium hover:bg-yellow-600"
+                        >
+                          ✓ Confirm
+                        </button>
+                      )}
+                      {order.status === "confirmed" && (
+                        <button
+                          onClick={() => updateOrderStatus(order.id, "preparing")}
+                          className="bg-orange-500 text-white px-3 py-1.5 rounded-lg text-xs font-medium hover:bg-orange-600"
+                        >
+                          👨‍🍳 Preparing
+                        </button>
+                      )}
+                      {order.status === "preparing" && (
+                        <button
+                          onClick={() => updateOrderStatus(order.id, "ready")}
+                          className="bg-purple-500 text-white px-3 py-1.5 rounded-lg text-xs font-medium hover:bg-purple-600"
+                        >
+                          ✅ Ready
+                        </button>
+                      )}
+                      {order.status === "ready" && (
+                        <button
+                          onClick={() => updateOrderStatus(order.id, "delivered")}
+                          className="bg-green-600 text-white px-3 py-1.5 rounded-lg text-xs font-medium hover:bg-green-700"
+                        >
+                          🎉 Delivered
+                        </button>
+                      )}
+                      {!["delivered", "cancelled"].includes(order.status) && (
+                        <button
+                          onClick={() => updateOrderStatus(order.id, "cancelled")}
+                          className="border border-red-300 text-red-600 px-3 py-1.5 rounded-lg text-xs font-medium hover:bg-red-50"
+                        >
+                          ✕ Cancel
+                        </button>
+                      )}
+                      {order.customerPhone && (
+                        <a
+                          href={`https://wa.me/${order.customerPhone.replace(/\D/g, "")}?text=${encodeURIComponent(
+                            `Hi ${order.customerName}! Your order (${order.id.slice(0, 12).toUpperCase()}) is ${order.status}.`
+                          )}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="border border-green-500 text-green-700 px-3 py-1.5 rounded-lg text-xs font-medium hover:bg-green-50"
+                        >
+                          📱 WhatsApp
+                        </a>
+                      )}
+                    </div>
+                    {order.notes && (
+                      <p className="mt-2 text-xs text-gray-500 italic">Note: {order.notes}</p>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         )}
 
@@ -656,6 +836,7 @@ export default function DashboardPage() {
             <div className="h-[calc(100vh-12rem)]">
               <AIChat
                 context="general"
+                language={language}
                 placeholder="अपनी दुकान के बारे में कुछ भी पूछें... Ask anything about your shop..."
               />
             </div>
