@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { verifyToken } from '@/lib/auth';
-import { getOrders, createOrder, updateOrder, getUserById } from '@/lib/db';
+import { getOrders, createOrder, updateOrder, getUserById, getProducts } from '@/lib/db';
 import { OrderStatus, OrderFulfillmentType } from '@/types';
 
 async function getAuthUser(request: NextRequest) {
@@ -33,10 +33,14 @@ export async function POST(request: NextRequest) {
   if (authUser) {
     shopId = authUser.shopId;
   } else if (body.shopId) {
-    // Public customer booking — validate shopId exists
+    // Public customer booking — validate shopId exists and has products listed
     const shopUser = getUserById(body.shopId);
     if (!shopUser) {
       return NextResponse.json({ error: 'Shop not found' }, { status: 404 });
+    }
+    const shopProducts = getProducts(body.shopId);
+    if (shopProducts.length === 0) {
+      return NextResponse.json({ error: 'This shop is not accepting orders yet' }, { status: 403 });
     }
     shopId = body.shopId;
   } else {

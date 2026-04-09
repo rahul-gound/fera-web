@@ -493,10 +493,10 @@ export default function DashboardPage() {
                       selectedProductId={item.productId || undefined}
                       onSelect={(product) => {
                         const items = [...invoiceForm.items];
-                        if (!product.id) {
-                          items[i] = { ...items[i], productId: "", productName: "", price: 0 };
+                        if (!product) {
+                          items[i] = { ...items[i], productId: "", productName: "", price: 0, quantity: 1 };
                         } else {
-                          items[i] = { ...items[i], productId: product.id, productName: product.name, price: product.price };
+                          items[i] = { ...items[i], productId: product.id, productName: product.name, price: product.price, quantity: 1 };
                         }
                         setInvoiceForm((f) => ({ ...f, items }));
                       }}

@@ -99,7 +99,7 @@ export default function StorefrontPage({ params }: { params: Promise<{ subdomain
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          shopId: shopInfo ? undefined : subdomain,
+          shopId: subdomain,
           customerName: orderDetails.customerName,
           customerPhone: orderDetails.customerPhone,
           customerAddress: orderDetails.customerAddress,

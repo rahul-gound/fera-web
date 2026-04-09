@@ -5,7 +5,7 @@ import { Product } from "@/types";
 interface ProductSearchProps {
   products: Product[];
   selectedProductId?: string;
-  onSelect: (product: Product) => void;
+  onSelect: (product: Product | null) => void;
   placeholder?: string;
 }
 
@@ -62,7 +62,7 @@ export default function ProductSearch({
               type="button"
               onClick={(e) => {
                 e.stopPropagation();
-                onSelect({ ...selected, id: "" } as Product);
+                onSelect(null);
                 setOpen(false);
               }}
               className="ml-2 text-gray-400 hover:text-gray-600 text-lg leading-none"
